@@ -1,5 +1,5 @@
-#using spark-submit
-
+# using spark-submit
+# spark-submit --name LoadForecastingModelTraining --master yarn --deploy-mode client --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 --conf spark.sql.catalogImplementation=hive --files /etc/hive/conf.dist/hive-site.xml --jars "/path/to/hive/lib/hive-metastore-*.jar,/path/to/hive/lib/hive-exec-*.jar,/usr/lib/hadoop-lzo/lib/hadoop-lzo-0.4.19.jar" --num-executors 10 --executor-cores 4 --executor-memory 8G --driver-memory 4G model_training.py
 
 # ======================================================================
 # 1. Import necessary libraries
@@ -35,7 +35,9 @@ def run_model_training(spark):
     # ======================================================================
 
     # Load the permanent feature table for training
-    df = spark.table("zhehao_final_training_features").orderBy(col("ts"))
+    
+    df = spark.table("default.zhehao_final_training_features").orderBy(col("ts"))
+
 
     # Drop original columns not needed for training (target is 'mw', 'ts' is for ordering)
     df = df.drop("datetime_ept")

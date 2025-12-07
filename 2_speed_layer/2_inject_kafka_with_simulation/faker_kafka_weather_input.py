@@ -12,8 +12,8 @@ TOPIC_NAME = 'zhehao_weather_reports_realtime'
 EASTERN_TZ = pytz.timezone('America/New_York')
 
 # --- Simulation Time Setup ---
-# 定义起始时间： 2025-12-02 15:00:00 EPT
-START_TIME_STR = '2025-12-02 15:00:00'
+# 定义起始时间： 2025-12-01 00:00:00 EPT
+START_TIME_STR = '2025-12-01 00:00:00'
 INITIAL_TIME = EASTERN_TZ.localize(datetime.strptime(START_TIME_STR, '%Y-%m-%d %H:%M:%S'))
 
 # 定义每个字段的最大随机波动范围 (Noise)

@@ -1,6 +1,4 @@
-#spark-submit
-#spark-submit --master yarn --packages org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.0,org.apache.hbase:hbase-client:2.4.0,org.apache.hbase:hbase-common:2.4.0 kafka_hbase_writer_load.py
-
+#spark-submit --master yarn --packages org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.0,org.apache.hbase:hbase-client:2.4.0,org.apache.hbase:hbase-common:2.4.0 kafka_hbase_writer_weather.py
 
 
 
@@ -17,19 +15,23 @@ logger = logging.getLogger(__name__)
 # Configuration
 HBASE_ZK_QUORUM = "ip-172-31-91-77.ec2.internal"
 HBASE_ZK_PORT = "2181"
-HBASE_TABLE_NAME = "zhehao_hbase_real_load"
-HBASE_COLUMN_FAMILY = "load_data"
+HBASE_TABLE_NAME = "zhehao_hbase_real_weather"
+HBASE_COLUMN_FAMILY = "weather_data"
 
 NAMENODE_ADDRESS = "ip-172-31-91-77.ec2.internal:8020"
-CHECKPOINT_LOCATION = f"hdfs://{NAMENODE_ADDRESS}/user/zhehao/spark_checkpoints/real_load_stream"
+CHECKPOINT_LOCATION = f"hdfs://{NAMENODE_ADDRESS}/user/zhehao/spark_checkpoints/real_weather_stream"
 
 KAFKA_BOOTSTRAP = "ip-172-31-91-77.ec2.internal:9092"
-KAFKA_TOPIC = "zhehao_power_readings_raw"
+KAFKA_TOPIC = "zhehao_weather_reports_realtime"
 
-# Updated schema to match producer
+# Data Schema
 data_schema = StructType([
-    StructField("timestamp", StringType(), True),  # String format: "2025-12-02 15:00:00"
-    StructField("current_reading", DoubleType(), True)
+    StructField("datetime_ept", StringType(), True), 
+    StructField("temp", DoubleType(), True),
+    StructField("prcp", DoubleType(), True),
+    StructField("hmdt", DoubleType(), True),
+    StructField("wnd_spd", DoubleType(), True),
+    StructField("atm_press", DoubleType(), True)
 ])
 
 
@@ -50,7 +52,7 @@ def foreach_batch_writer(batch_df, batch_id):
     
     # Print sample data
     for i, row in enumerate(rows[:3]):
-        logger.info(f"Sample row {i}: timestamp={row.timestamp}, reading={row.current_reading}")
+        logger.info(f"Sample row {i}: datetime={row.datetime_ept}, temp={row.temp}, prcp={row.prcp}")
     
     # Import Java classes
     from py4j.java_gateway import java_import
@@ -86,52 +88,47 @@ def foreach_batch_writer(batch_df, batch_id):
         
         logger.info(f"Connected to HBase table: {HBASE_TABLE_NAME}")
         
+        # Helper function to add data to Put object
+        def add_to_put(put_obj, qualifier, value):
+            if value is not None:
+                put_obj.addColumn(
+                    Bytes.toBytes(HBASE_COLUMN_FAMILY),
+                    Bytes.toBytes(qualifier),
+                    Bytes.toBytes(str(value))
+                )
+
         for row in rows:
             try:
-                timestamp_str = row.timestamp
-                current_reading = row.current_reading
+                datetime_ept_str = row.datetime_ept
+                temp = row.temp
+                prcp = row.prcp
+                hmdt = row.hmdt
+                wnd_spd = row.wnd_spd
+                atm_press = row.atm_press
                 
-                if not timestamp_str:
-                    logger.warning("Skipping row with empty timestamp")
+                if not datetime_ept_str:
+                    logger.warning("Skipping row with empty datetime_ept")
                     continue
                 
-                # Use timestamp string directly as row key
-                # This is more human-readable
-                row_key = timestamp_str
-                
-                # Also calculate milliseconds for storage
-                from datetime import datetime
-                try:
-                    # Parse "2025-12-02 15:00:00" format
-                    dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
-                    ts_ms = int(dt.timestamp() * 1000)
-                except Exception as e:
-                    logger.warning(f"Failed to parse timestamp: {timestamp_str}, error: {e}")
-                    ts_ms = int(time.time() * 1000)
+                # Use datetime_ept string as row key
+                row_key = datetime_ept_str
                 
                 # Create Put
                 put = Put(Bytes.toBytes(row_key))
                 logger.info(f"Creating row with key: {row_key}")
                 
-                # Add timestamp milliseconds (for reference)
-                put.addColumn(
-                    Bytes.toBytes(HBASE_COLUMN_FAMILY),
-                    Bytes.toBytes("timestamp_ms"),
-                    Bytes.toBytes(str(ts_ms))
-                )
-                
-                # Add current_reading
-                if current_reading is not None:
-                    put.addColumn(
-                        Bytes.toBytes(HBASE_COLUMN_FAMILY),
-                        Bytes.toBytes("current_reading"),
-                        Bytes.toBytes(str(current_reading))
-                    )
-                
+                # Add all fields
+                add_to_put(put, "datetime_ept", datetime_ept_str)
+                add_to_put(put, "temp", temp)
+                add_to_put(put, "prcp", prcp)
+                add_to_put(put, "hmdt", hmdt)
+                add_to_put(put, "wnd_spd", wnd_spd)
+                add_to_put(put, "atm_press", atm_press)
+
                 # Write to HBase
                 table.put(put)
                 success_count += 1
-                logger.info(f"✅ Wrote row_key={row_key}, reading={current_reading}")
+                logger.info(f"✅ Wrote row_key={row_key}, temp={temp}")
                 
             except Exception as e:
                 logger.error(f"❌ Failed to write row: {e}")
@@ -158,7 +155,7 @@ if __name__ == "__main__":
     
     spark = (
         SparkSession.builder
-        .appName("KafkaToHBaseStream_PowerReadings")
+        .appName("KafkaToHBaseStream_WeatherReports")
         .config("spark.streaming.kafka.maxRatePerPartition", "100")
         .config("spark.sql.shuffle.partitions", "2")
         .getOrCreate()
@@ -167,7 +164,7 @@ if __name__ == "__main__":
     spark.sparkContext.setLogLevel("WARN")
     
     logger.info("=" * 60)
-    logger.info("Kafka to HBase Streaming - Power Readings")
+    logger.info("Kafka to HBase Streaming - Weather Reports")
     logger.info("=" * 60)
     logger.info(f"Kafka: {KAFKA_BOOTSTRAP} / {KAFKA_TOPIC}")
     logger.info(f"HBase: {HBASE_ZK_QUORUM}:{HBASE_ZK_PORT} / {HBASE_TABLE_NAME}")
@@ -190,10 +187,14 @@ if __name__ == "__main__":
         .selectExpr("CAST(value AS STRING) AS json_string")
         .withColumn("value_json", from_json(col("json_string"), data_schema))
         .select(
-            col("value_json.timestamp").alias("timestamp"),
-            col("value_json.current_reading").alias("current_reading")
+            col("value_json.datetime_ept").alias("datetime_ept"),
+            col("value_json.temp").alias("temp"),
+            col("value_json.prcp").alias("prcp"),
+            col("value_json.hmdt").alias("hmdt"),
+            col("value_json.wnd_spd").alias("wnd_spd"),
+            col("value_json.atm_press").alias("atm_press")
         )
-        .filter(col("timestamp").isNotNull())
+        .filter(col("datetime_ept").isNotNull())
     )
     
     query = (

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chicago Load Prediction</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        h1 { color: #667eea; text-align: center; margin-bottom: 20px; }
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        input, button {
+            padding: 10px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background: #764ba2; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #667eea;
+            color: white;
+        }
+        tr:hover { background: #f5f5f5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🔌 Chicago 24-Hour Load Prediction</h1>
+            <div class="controls">
+                <label>Date:</label>
+                <input type="date" id="date" value="2025-12-01">
+                <button onclick="loadData()">Load Data</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📊 Load Comparison Chart</h2>
+            <canvas id="chart"></canvas>
+        </div>
+
+        <div class="card">
+            <h2>📋 Data Table</h2>
+            <div id="table"></div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+
+        async function loadData() {
+            const date = document.getElementById('date').value;
+            try {
+                const res = await fetch(`/api/combined?date=${date}`);
+                const result = await res.json();
+                if (result.success) {
+                    createChart(result.data);
+                    createTable(result.data);
+                }
+            } catch (error) {
+                alert('Failed to load data: ' + error.message);
+            }
+        }
+
+        function createChart(data) {
+            const ctx = document.getElementById('chart').getContext('2d');
+            if (chart) chart.destroy();
+            
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.datetime.split(' ')[1]),
+                    datasets: [{
+                        label: 'Predicted Load',
+                        data: data.map(d => d.predicted),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        borderWidth: 2
+                    }, {
+                        label: 'Actual Load',
+                        data: data.map(d => d.actual),
+                        borderColor: '#764ba2',
+                        backgroundColor: 'rgba(118, 75, 162, 0.1)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        y: { 
+                            beginAtZero: false,
+                            title: { display: true, text: 'Load (MW)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createTable(data) {
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Predicted Load (MW)</th>
+                            <th>Actual Load (MW)</th>
+                            <th>Error (MW)</th>
+                            <th>Temperature (°C)</th>
+                            <th>Humidity (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            data.forEach(row => {
+                html += `
+                    <tr>
+                        <td>${row.datetime.split(' ')[1]}</td>
+                        <td>${row.predicted.toFixed(2)}</td>
+                        <td>${row.actual ? row.actual.toFixed(2) : 'N/A'}</td>
+                        <td>${row.error ? row.error.toFixed(2) : 'N/A'}</td>
+                        <td>${row.temp ? row.temp.toFixed(2) : 'N/A'}</td>
+                        <td>${row.humidity ? row.humidity.toFixed(2) : 'N/A'}</td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table>';
+            document.getElementById('table').innerHTML = html;
+        }
+
+        // Auto load data on page load
+        loadData();
+    </script>
+</body>
+</html>

@@ -8,14 +8,12 @@ import pytz
 from confluent_kafka import Producer 
 
 # --- Configuration ---
-# Set the actual Broker IP address, consistent with the Spark script
 KAFKA_BROKER = 'ip-172-31-91-77.ec2.internal:9092' 
 TOPIC_NAME = 'zhehao_power_readings_raw'
 EASTERN_TZ = pytz.timezone('America/New_York')
 
 # --- Simulation Time Setup ---
-# Start time defined as 2025-12-02 15:00:00 EPT
-START_TIME_STR = '2025-12-02 15:00:00'
+START_TIME_STR = '2025-12-01 00:00:00'
 INITIAL_TIME = EASTERN_TZ.localize(datetime.strptime(START_TIME_STR, '%Y-%m-%d %H:%M:%S'))
 
 def produce_power_reading_hourly():
@@ -38,13 +36,35 @@ def produce_power_reading_hourly():
         # 1. Use current simulated time
         now_ept = current_time
         datetime_ept_str = now_ept.strftime('%Y-%m-%d %H:%M:%S')
-
-        # 2. Simulate MW load data 
-        # Base load adjusted based on hour (simulating higher daytime load)
-        base_load = 8000.0 + (current_time.hour * 100) 
-        load_mw = base_load + random.uniform(-100.0, 100.0)
+        hour = now_ept.hour 
         
-        # 3. Build message body (matches Spark Schema for RowKey and column names)
+        # 2. Simulate MW load data 
+        
+        if 0 <= hour <= 5: 
+            # Night time low load
+            base_load_raw = 8500.0 + (hour * 50) - (random.uniform(0, 300) if hour < 3 else 0)
+        elif 6 <= hour <= 8:
+            # Morning ramp-up
+            base_load_raw = 8800.0 + ((hour - 5) * 600) 
+        elif 9 <= hour <= 17:
+            # Day time/Afternoon peak plateau
+            midday_adjustment = 0
+            if hour in [11, 13]:
+                midday_adjustment = -200
+            elif hour >= 14:
+                midday_adjustment = (hour - 13) * 150 
+            
+            base_load_raw = 10000.0 + midday_adjustment
+        elif 18 <= hour <= 23:
+            # Evening and late night decline
+            base_load_raw = 10800.0 - ((hour - 18) * 300)
+        else:
+            base_load_raw = 8500.0 
+
+        # Add random fluctuation
+        load_mw = base_load_raw + random.uniform(-150.0, 150.0)
+        
+        # 3. Build message body
         message = {               
             "timestamp": datetime_ept_str,             
             "current_reading": round(load_mw, 2),                                 
@@ -69,7 +89,7 @@ def produce_power_reading_hourly():
             print(f"Failed to produce message: {e}")
             
         
-        # --- Time step (Core modification) ---
+        # --- Time step ---
         # Increment time by one hour for the next loop
         current_time += timedelta(hours=1)
 
@@ -79,5 +99,4 @@ def produce_power_reading_hourly():
     producer.flush()
 
 if __name__ == "__main__":
-    # Assuming your Kafka Broker is running
     produce_power_reading_hourly()

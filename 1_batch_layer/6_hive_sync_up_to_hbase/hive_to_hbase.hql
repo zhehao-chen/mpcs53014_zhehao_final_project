@@ -1,4 +1,4 @@
-CREATE EXTERNAL TABLE IF NOT EXISTS zhehao_hive_on_hbase_predictions (
+CREATE EXTERNAL TABLE zhehao_hive_on_hbase_predictions (
     row_key STRING,
     prediction_value DOUBLE,
     prediction_ts BIGINT
@@ -12,24 +12,27 @@ TBLPROPERTIES (
     "hbase.mapred.output.outputtable" = "zhehao_daily_predictions_hbase"
 );
 
-INSERT OVERWRITE TABLE zhehao_hive_on_hbase_predictions
--- 1. 选取源表 load_forecast.zhehao_daily_predictions 中最新的 24 条记录
-SELECT 
-    t.ts,                -- 映射到 HBase Row Key (STRING)
-    t.predicted_load_mw, 
-    UNIX_TIMESTAMP(t.ts) -- 映射到 HBase 列 data:timestamp (BIGINT)
-FROM 
-    load_forecast.zhehao_daily_predictions t
-ORDER BY 
-    t.ts DESC;
 
-INSERT OVERWRITE TABLE zhehao_hive_on_hbase_predictions
+---
+-- Load the latest 24 records into the Hive-on-HBase table using the second (corrected) INSERT statement.
+-- This section correctly uses LIMIT 24 to select only the most recent predictions.
+-- put this into a cronjob in real production and run once 24 hours
+---
+
+SET hive.exec.dynamic.partition.mode=nonstrict; 
+
+INSERT INTO TABLE zhehao_hive_on_hbase_predictions
 SELECT 
-    t.ts,                
-    t.predicted_load_mw, 
-    UNIX_TIMESTAMP(t.ts) 
+    -- RowKey: 
+    CAST(t.ts AS STRING) AS row_key,
+    
+    -- prediction_value: 
+    t.predicted_load_mw AS prediction_value,
+    
+    -- prediction_ts: Unix 
+    UNIX_TIMESTAMP(t.ts) AS prediction_ts
 FROM 
     load_forecast.zhehao_daily_predictions t
 ORDER BY 
-    t.ts DESC           
-LIMIT 24;                
+    t.ts DESC
+LIMIT 24;

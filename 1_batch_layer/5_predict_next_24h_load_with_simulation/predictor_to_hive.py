@@ -5,6 +5,8 @@
 # Output columns are restricted to 'ts' and 'predicted_load_mw'.
 # NEW: Predicted load field is rounded to two decimal places.
 # ======================================================================
+# using spark-submit
+# spark-submit --name LoadForecastingBatchPrediction --master yarn --deploy-mode client --conf spark.sql.catalogImplementation=hive --files /etc/hive/conf.dist/hive-site.xml --jars /usr/lib/hive/lib/hive-metastore-3.1.3-amzn-20.jar,/usr/lib/hive/lib/hive-exec-3.1.3-amzn-20.jar,/usr/lib/hadoop-lzo/lib/hadoop-lzo-0.4.19.jar --num-executors 5 --executor-cores 2 --executor-memory 4G --driver-memory 2G predictor_to_hive.py
 
 from pyspark.sql import SparkSession
 from pyspark.ml import PipelineModel
@@ -41,7 +43,7 @@ def run_prediction(spark):
     # ======================================================================
     
     # Assuming current time is 2025-12-01 23:00:00, we predict 24 hours starting from 2025-12-02 00:00:00
-    start_prediction_ts = datetime(2025, 12, 2, 0, 0, 0)
+    start_prediction_ts = datetime(2025, 12, 1, 0, 0, 0)
     
     BASE_LOAD = 9500.0
     BASE_TEMP = 15.0
